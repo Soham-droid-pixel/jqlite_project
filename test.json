@@ -1,0 +1,21 @@
+{
+  "name": "John Doe",
+  "age": 30,
+  "email": "john@example.com",
+  "posts": [
+    {
+      "title": "First Post",
+      "content": "This is my first blog post",
+      "likes": 42
+    },
+    {
+      "title": "Second Post",
+      "content": "Another interesting article",
+      "likes": 128
+    }
+  ],
+  "settings": {
+    "theme": "dark",
+    "notifications": true
+  }
+}

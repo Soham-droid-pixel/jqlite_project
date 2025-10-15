@@ -1,0 +1,26 @@
+{
+  "university": "Example University",
+  "course": {
+    "name": "Compiler Construction",
+    "code": "CS301",
+    "credits": 4
+  },
+  "students": [
+    {
+      "name": "Alice",
+      "grade": 95
+    },
+    {
+      "name": "Bob",
+      "grade": 87
+    },
+    {
+      "name": "Charlie",
+      "grade": 92
+    }
+  ],
+  "professor": {
+    "name": "Dr. Smith",
+    "office": "CS Building Room 305"
+  }
+}
