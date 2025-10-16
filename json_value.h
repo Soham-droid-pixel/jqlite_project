@@ -2,13 +2,15 @@
  * json_value.h
  * 
  * Defines the core data structures to represent JSON values in memory.
- * Uses a tree structure with linked lists for objects and arrays.
+ * UPGRADED VERSION with hash table support for objects, pipe operations,
+ * filtering, and array slicing.
  */
 
 #ifndef JSON_VALUE_H
 #define JSON_VALUE_H
 
 #include <stdlib.h>
+#include "uthash.h"  // Hash table library for fast object lookups
 
 /**
  * Enumeration of all possible JSON value types.
@@ -30,12 +32,14 @@ struct JsonValue;
 
 /**
  * Represents a single member of a JSON object.
- * Objects are stored as linked lists of key-value pairs.
+ * NOW USES UTHASH for O(1) lookups instead of linked list.
+ * Note: 'next' field is kept for temporary use during parsing.
  */
 typedef struct JsonObjectMember {
-    char* key;                          // The key (field name)
+    char* key;                          // The key (field name) - also the hash key
     struct JsonValue* value;            // Pointer to the value
-    struct JsonObjectMember* next;      // Pointer to next member in the list
+    UT_hash_handle hh;                  // Makes this structure hashable by uthash
+    struct JsonObjectMember* next;      // Temporary: used during parsing, then discarded
 } JsonObjectMember;
 
 /**
@@ -57,28 +61,63 @@ typedef struct JsonValue {
         double number;                  // For JSON_NUMBER
         char* string;                   // For JSON_STRING
         JsonArrayElement* array;        // For JSON_ARRAY (head of linked list)
-        JsonObjectMember* object;       // For JSON_OBJECT (head of linked list)
+        JsonObjectMember* object;       // For JSON_OBJECT (head of hash table)
     } value;
 } JsonValue;
 
 /**
+ * Enumeration for comparison operators in select() expressions.
+ */
+typedef enum {
+    CMP_GT,         // Greater than: >
+    CMP_LT,         // Less than: <
+    CMP_EQ,         // Equal: ==
+    CMP_GTE,        // Greater than or equal: >=
+    CMP_LTE,        // Less than or equal: <=
+    CMP_NEQ         // Not equal: !=
+} ComparisonOp;
+
+/**
+ * Represents a condition expression used in select() filtering.
+ */
+typedef struct ConditionExpr {
+    struct QueryNode* left;             // Left side of comparison (usually a field access)
+    ComparisonOp op;                    // Comparison operator
+    double value;                       // Right side value (only numbers supported for now)
+} ConditionExpr;
+
+/**
  * Represents a single operation in the query AST.
- * Queries are represented as linked lists of operations.
+ * UPGRADED to support pipes, filtering, and slicing.
  */
 typedef enum {
     QUERY_IDENTITY,     // The '.' operation (selects entire document)
     QUERY_FIELD,        // Field access: .fieldname
-    QUERY_INDEX         // Array index: [n]
+    QUERY_INDEX,        // Array index: [n]
+    QUERY_PIPE,         // Pipe operator: |
+    QUERY_SELECT,       // Filter with select(): select(condition)
+    QUERY_SLICE,        // Array slice: [start:end]
+    QUERY_ARRAY_ITER    // Array iteration: .[]
 } QueryNodeType;
 
 /**
  * A node in the query Abstract Syntax Tree.
+ * UPGRADED to support new operations.
  */
 typedef struct QueryNode {
     QueryNodeType type;         // Type of this query operation
     union {
         char* field;            // For QUERY_FIELD
         int index;              // For QUERY_INDEX
+        struct {
+            int start;          // For QUERY_SLICE
+            int end;
+        } slice;
+        struct {
+            struct QueryNode* left;   // For QUERY_PIPE
+            struct QueryNode* right;
+        } pipe;
+        ConditionExpr* condition;     // For QUERY_SELECT
     } data;
     struct QueryNode* next;     // Next operation in the query chain
 } QueryNode;
@@ -121,9 +160,14 @@ JsonValue* create_json_object();
 void json_array_add(JsonValue* array, JsonValue* element);
 
 /**
- * Add a member (key-value pair) to a JSON object.
+ * Add a member (key-value pair) to a JSON object using hash table.
  */
 void json_object_add(JsonValue* object, const char* key, JsonValue* value);
+
+/**
+ * Find a member in a JSON object by key (O(1) with hash table).
+ */
+JsonValue* json_object_get(JsonValue* object, const char* key);
 
 /**
  * Print a JSON value to stdout.
@@ -134,6 +178,11 @@ void print_json_value(JsonValue* value, int indent);
  * Free memory allocated for a JSON value and all its children.
  */
 void free_json_value(JsonValue* value);
+
+/**
+ * Clone a JSON value (deep copy).
+ */
+JsonValue* clone_json_value(JsonValue* value);
 
 /* Function prototypes for query execution */
 
@@ -146,5 +195,25 @@ JsonValue* execute_query(QueryNode* query, JsonValue* json_data);
  * Free memory allocated for a query AST.
  */
 void free_query(QueryNode* query);
+
+/**
+ * Create a new query node for pipe operation.
+ */
+QueryNode* create_pipe_node(QueryNode* left, QueryNode* right);
+
+/**
+ * Create a new query node for select operation.
+ */
+QueryNode* create_select_node(ConditionExpr* condition);
+
+/**
+ * Create a new query node for slice operation.
+ */
+QueryNode* create_slice_node(int start, int end);
+
+/**
+ * Create a new query node for array iteration.
+ */
+QueryNode* create_array_iter_node();
 
 #endif /* JSON_VALUE_H */

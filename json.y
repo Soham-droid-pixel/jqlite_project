@@ -2,7 +2,7 @@
  * json.y
  * 
  * Bison parser specification for JSON.
- * Builds an in-memory tree of JsonValue structs from JSON input.
+ * UPGRADED VERSION using uthash for object member storage.
  */
 
 %{
@@ -67,6 +67,7 @@ value:
 
 /**
  * A JSON object: { members } or {}
+ * UPGRADED: Now uses hash table instead of linked list.
  */
 object:
     LBRACE RBRACE               {
@@ -74,13 +75,27 @@ object:
     }
     | LBRACE members RBRACE     {
         JsonValue* obj = create_json_object();
-        obj->value.object = $2;
+        
+        /* Add all members from linked list to hash table */
+        JsonObjectMember* current = $2;
+        while (current != NULL) {
+            JsonObjectMember* next = current->next;
+            current->next = NULL;  // Clear the temporary next pointer
+            
+            /* Add to hash table using uthash */
+            HASH_ADD_KEYPTR(hh, obj->value.object, current->key, 
+                           strlen(current->key), current);
+            
+            current = next;
+        }
+        
         $$ = obj;
     }
     ;
 
 /**
  * Object members: one or more key-value pairs.
+ * Built as temporary linked list during parsing, then added to hash table.
  */
 members:
     member                      { $$ = $1; }

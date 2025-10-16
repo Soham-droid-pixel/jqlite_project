@@ -2,7 +2,7 @@
  * query.l
  * 
  * Flex lexer specification for the jqlite query language.
- * Tokenizes query strings like ".field[0].name"
+ * UPGRADED VERSION with support for pipes, select, slicing, and comparisons.
  */
 
 %{
@@ -27,11 +27,26 @@
 "."                     { return DOT; }
 "["                     { return LBRACK; }
 "]"                     { return RBRACK; }
+"|"                     { return PIPE; }
+"("                     { return LPAREN; }
+")"                     { return RPAREN; }
+":"                     { return COLON; }
 
-    /* Array indices (non-negative integers) */
-[0-9]+                  {
-    query_yylval.number = atoi(query_yytext);
-    return INDEX;
+    /* Comparison operators */
+"=="                    { return EQ; }
+"!="                    { return NEQ; }
+">="                    { return GTE; }
+"<="                    { return LTE; }
+">"                     { return GT; }
+"<"                     { return LT; }
+
+    /* Keywords */
+"select"                { return SELECT; }
+
+    /* Numbers (integers and floats) */
+-?[0-9]+\.?[0-9]*       {
+    query_yylval.number = atof(query_yytext);
+    return NUMBER;
 }
 
     /* Field identifiers (alphanumeric + underscore, starting with letter or underscore) */
