@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jqlite Web UI - JSON Query Tool</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Monaco Editor from CDN -->
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">
+                    <span class="title-icon">⚡</span>
+                    jqlite Web UI
+                </h1>
+                <p class="subtitle">Interactive JSON Query Tool with Advanced Filtering</p>
+            </div>
+            <div class="header-badge">
+                <span class="badge">v1.0</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Left Panel: JSON Input -->
+            <section class="panel json-panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">
+                        <span class="panel-icon">📄</span>
+                        JSON Input
+                    </h2>
+                    <button class="btn-small" id="formatJsonBtn" title="Format JSON">
+                        <span>✨ Format</span>
+                    </button>
+                </div>
+                <div class="editor-container">
+                    <div id="jsonEditor" class="editor"></div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Query & Results -->
+            <section class="panel query-panel">
+                <!-- Query Input Section -->
+                <div class="query-section">
+                    <div class="panel-header">
+                        <h2 class="panel-title">
+                            <span class="panel-icon">🔍</span>
+                            Query
+                        </h2>
+                    </div>
+                    <div class="query-input-container">
+                        <input 
+                            type="text" 
+                            id="queryInput" 
+                            class="query-input" 
+                            placeholder="Enter jqlite query (e.g., .posts | .[] | select(.likes > 50))"
+                            spellcheck="false"
+                        >
+                        <button id="runQueryBtn" class="btn-run">
+                            <span class="btn-icon">▶</span>
+                            Run Query
+                        </button>
+                    </div>
+                    
+                    <!-- Query Examples -->
+                    <div class="examples">
+                        <span class="examples-label">Examples:</span>
+                        <button class="example-btn" data-query=".name">Basic: .name</button>
+                        <button class="example-btn" data-query=".posts | [0]">Pipe: .posts | [0]</button>
+                        <button class="example-btn" data-query=".posts | .[] | select(.likes > 50)">Filter: select()</button>
+                        <button class="example-btn" data-query=".posts[0:2]">Slice: [0:2]</button>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="results-section">
+                    <div class="panel-header">
+                        <h2 class="panel-title">
+                            <span class="panel-icon">📊</span>
+                            Result
+                        </h2>
+                        <div class="status-indicator" id="statusIndicator">
+                            <span class="status-dot"></span>
+                            <span class="status-text">Ready</span>
+                        </div>
+                    </div>
+                    <div class="editor-container">
+                        <div id="resultEditor" class="editor"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>
+                    <strong>jqlite</strong> - A JSON query tool with filtering, slicing, and hash table optimization
+                </p>
+                <p class="footer-links">
+                    <span>Operators: <code>></code> <code><</code> <code>==</code> <code>>=</code> <code><=</code> <code>!=</code></span>
+                    <span>•</span>
+                    <span>Slicing: <code>[start:end]</code> <code>[:n]</code> <code>[n:]</code></span>
+                    <span>•</span>
+                    <span>Iteration: <code>.[]</code></span>
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Executing query...</p>
+    </div>
+
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    
+    <script>
+        // Global editor references
+        let jsonEditor, resultEditor;
+
+        // Sample JSON data
+        const sampleJSON = {
+            "name": "John Doe",
+            "age": 30,
+            "email": "john@example.com",
+            "posts": [
+                {
+                    "title": "First Post",
+                    "content": "This is my first blog post",
+                    "likes": 42,
+                    "author": "John"
+                },
+                {
+                    "title": "Second Post",
+                    "content": "Another interesting article",
+                    "likes": 128,
+                    "author": "John"
+                },
+                {
+                    "title": "Third Post",
+                    "content": "Advanced techniques",
+                    "likes": 87,
+                    "author": "John"
+                }
+            ],
+            "settings": {
+                "theme": "dark",
+                "notifications": true,
+                "privacy": "public"
+            }
+        };
+
+        // Initialize Monaco Editor
+        require.config({ 
+            paths: { 
+                'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' 
+            } 
+        });
+
+        require(['vs/editor/editor.main'], function() {
+            // Create JSON input editor
+            jsonEditor = monaco.editor.create(document.getElementById('jsonEditor'), {
+                value: JSON.stringify(sampleJSON, null, 2),
+                language: 'json',
+                theme: 'vs-dark',
+                fontSize: 14,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                formatOnPaste: true,
+                formatOnType: true
+            });
+
+            // Create result output editor (read-only)
+            resultEditor = monaco.editor.create(document.getElementById('resultEditor'), {
+                value: '// Results will appear here...\n// Click "Run Query" to execute your jqlite query',
+                language: 'json',
+                theme: 'vs-dark',
+                fontSize: 14,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                readOnly: true
+            });
+
+            console.log('✓ Monaco editors initialized');
+        });
+
+        // UI Elements
+        const queryInput = document.getElementById('queryInput');
+        const runQueryBtn = document.getElementById('runQueryBtn');
+        const formatJsonBtn = document.getElementById('formatJsonBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const exampleButtons = document.querySelectorAll('.example-btn');
+
+        // Status management
+        function setStatus(status, message) {
+            const dot = statusIndicator.querySelector('.status-dot');
+            const text = statusIndicator.querySelector('.status-text');
+            
+            dot.className = 'status-dot status-' + status;
+            text.textContent = message;
+        }
+
+        // Show/hide loading overlay
+        function showLoading() {
+            loadingOverlay.classList.add('active');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.remove('active');
+        }
+
+        // Format JSON button
+        formatJsonBtn.addEventListener('click', () => {
+            try {
+                const jsonText = jsonEditor.getValue();
+                const parsed = JSON.parse(jsonText);
+                const formatted = JSON.stringify(parsed, null, 2);
+                jsonEditor.setValue(formatted);
+                setStatus('success', 'Formatted');
+                setTimeout(() => setStatus('ready', 'Ready'), 2000);
+            } catch (err) {
+                setStatus('error', 'Invalid JSON');
+                resultEditor.setValue(`Error: Invalid JSON\n${err.message}`);
+            }
+        });
+
+        // Example buttons
+        exampleButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const query = btn.dataset.query;
+                queryInput.value = query;
+                queryInput.focus();
+            });
+        });
+
+        // Run query button
+        runQueryBtn.addEventListener('click', async () => {
+            const jsonData = jsonEditor.getValue();
+            const queryString = queryInput.value.trim();
+
+            // Validation
+            if (!queryString) {
+                setStatus('error', 'Query required');
+                resultEditor.setValue('Error: Please enter a query string');
+                return;
+            }
+
+            // Validate JSON
+            try {
+                JSON.parse(jsonData);
+            } catch (err) {
+                setStatus('error', 'Invalid JSON');
+                resultEditor.setValue(`Error: Invalid JSON input\n\n${err.message}`);
+                return;
+            }
+
+            // Execute query
+            showLoading();
+            setStatus('running', 'Executing...');
+
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        json_data: jsonData,
+                        query_string: queryString
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    // Error response
+                    setStatus('error', 'Query failed');
+                    resultEditor.setValue(`Error:\n\n${data.error}`);
+                } else if (data.result) {
+                    // Success response
+                    setStatus('success', 'Success');
+                    
+                    // Try to format as JSON if possible
+                    try {
+                        const parsed = JSON.parse(data.result);
+                        const formatted = JSON.stringify(parsed, null, 2);
+                        resultEditor.setValue(formatted);
+                    } catch {
+                        // Not JSON, display as-is
+                        resultEditor.setValue(data.result);
+                    }
+                    
+                    setTimeout(() => setStatus('ready', 'Ready'), 3000);
+                }
+
+            } catch (err) {
+                setStatus('error', 'Connection failed');
+                resultEditor.setValue(`Connection Error:\n\n${err.message}\n\nMake sure the server is running on http://localhost:3000`);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Allow Enter key to run query
+        queryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                runQueryBtn.click();
+            }
+        });
+
+        // Initial status
+        setStatus('ready', 'Ready');
+    </script>
+</body>
+</html>
