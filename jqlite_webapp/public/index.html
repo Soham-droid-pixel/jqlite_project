@@ -65,6 +65,10 @@
                             <span class="btn-icon">▶</span>
                             Run Query
                         </button>
+                        <button id="visualizeBtn" class="btn-visualize">
+                            <span class="btn-icon">🔬</span>
+                            Visualize Compiler
+                        </button>
                     </div>
                     
                     <!-- Query Examples -->
@@ -95,6 +99,28 @@
                 </div>
             </section>
         </main>
+
+        <!-- Visualization Section -->
+        <section id="visualizationContainer" class="viz-container">
+            <div class="viz-header">
+                <h2>⚙️ Interactive Compiler Explorer</h2>
+                <button id="closeVizBtn" class="btn-close" title="Close Visualization">✕</button>
+            </div>
+            <div class="viz-columns">
+                <div class="viz-column">
+                    <h3>1️⃣ Token Stream (Lexer)</h3>
+                    <div id="tokenStream" class="viz-content"></div>
+                </div>
+                <div class="viz-column">
+                    <h3>2️⃣ Parse Steps (Parser/AST)</h3>
+                    <div id="parseSteps" class="viz-content"></div>
+                </div>
+                <div class="viz-column">
+                    <h3>3️⃣ Execution Trace (Engine)</h3>
+                    <div id="executionTrace" class="viz-content"></div>
+                </div>
+            </div>
+        </section>
 
         <!-- Footer -->
         <footer class="footer">
@@ -197,10 +223,13 @@
         // UI Elements
         const queryInput = document.getElementById('queryInput');
         const runQueryBtn = document.getElementById('runQueryBtn');
+        const visualizeBtn = document.getElementById('visualizeBtn');
         const formatJsonBtn = document.getElementById('formatJsonBtn');
         const loadingOverlay = document.getElementById('loadingOverlay');
         const statusIndicator = document.getElementById('statusIndicator');
         const exampleButtons = document.querySelectorAll('.example-btn');
+        const visualizationContainer = document.getElementById('visualizationContainer');
+        const closeVizBtn = document.getElementById('closeVizBtn');
 
         // Status management
         function setStatus(status, message) {
@@ -316,6 +345,164 @@
         queryInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 runQueryBtn.click();
+            }
+        });
+
+        // Close visualization button
+        closeVizBtn.addEventListener('click', () => {
+            visualizationContainer.style.display = 'none';
+        });
+
+        // Sleep helper for animation
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Animate tokens
+        async function animateTokens(tokens) {
+            const container = document.getElementById('tokenStream');
+            container.innerHTML = ''; // Clear previous
+            
+            for (const token of tokens) {
+                const div = document.createElement('div');
+                div.className = 'log-entry fade-in';
+                div.innerHTML = `<span class="token-type">${escapeHtml(token.type)}</span>: <span class="token-value">${escapeHtml(token.value)}</span>`;
+                container.appendChild(div);
+                await sleep(100);
+            }
+        }
+
+        // Animate parse steps
+        async function animateParseSteps(steps) {
+            const container = document.getElementById('parseSteps');
+            container.innerHTML = ''; // Clear previous
+            
+            for (const step of steps) {
+                const div = document.createElement('div');
+                div.className = 'log-entry fade-in';
+                div.innerHTML = `<div class="rule">${escapeHtml(step.rule)}</div><div class="ast-node">→ ${escapeHtml(step.astNode)}</div>`;
+                container.appendChild(div);
+                await sleep(150);
+            }
+        }
+
+        // Animate execution trace
+        async function animateExecutionTrace(trace) {
+            const container = document.getElementById('executionTrace');
+            container.innerHTML = ''; // Clear previous
+            
+            for (const entry of trace) {
+                const div = document.createElement('div');
+                div.className = 'log-entry fade-in';
+                
+                // Highlight errors
+                if (entry.step.includes('ERROR')) {
+                    div.classList.add('error-step');
+                }
+                
+                div.textContent = entry.step;
+                container.appendChild(div);
+                await sleep(120);
+            }
+        }
+
+        // HTML escape for security
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Visualize button handler
+        visualizeBtn.addEventListener('click', async () => {
+            const jsonData = jsonEditor.getValue();
+            const queryString = queryInput.value.trim();
+
+            // Validation
+            if (!queryString) {
+                setStatus('error', 'Query required');
+                resultEditor.setValue('Error: Please enter a query string');
+                return;
+            }
+
+            // Validate JSON
+            try {
+                JSON.parse(jsonData);
+            } catch (err) {
+                setStatus('error', 'Invalid JSON');
+                resultEditor.setValue(`Error: Invalid JSON input\n\n${err.message}`);
+                return;
+            }
+
+            // Show visualization container
+            visualizationContainer.style.display = 'block';
+            
+            // Clear previous content
+            document.getElementById('tokenStream').innerHTML = '<div class="loading-msg">⏳ Loading tokens...</div>';
+            document.getElementById('parseSteps').innerHTML = '<div class="loading-msg">⏳ Loading parse steps...</div>';
+            document.getElementById('executionTrace').innerHTML = '<div class="loading-msg">⏳ Loading execution trace...</div>';
+
+            // Scroll to visualization
+            visualizationContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Execute visualization
+            showLoading();
+            setStatus('running', 'Visualizing...');
+
+            try {
+                const response = await fetch('/api/visualize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        json_data: jsonData,
+                        query_string: queryString
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    // Error response
+                    setStatus('error', 'Visualization failed');
+                    document.getElementById('tokenStream').innerHTML = `<div class="error-msg">❌ ${escapeHtml(data.error)}</div>`;
+                    document.getElementById('parseSteps').innerHTML = `<div class="error-msg">❌ ${escapeHtml(data.error)}</div>`;
+                    document.getElementById('executionTrace').innerHTML = `<div class="error-msg">❌ ${escapeHtml(data.error)}</div>`;
+                } else {
+                    // Success - animate all three phases
+                    setStatus('success', 'Visualizing...');
+                    
+                    // Animate tokens
+                    await animateTokens(data.tokens || []);
+                    
+                    // Animate parse steps
+                    await animateParseSteps(data.parseSteps || []);
+                    
+                    // Animate execution trace
+                    await animateExecutionTrace(data.executionTrace || []);
+                    
+                    // Show final result in result editor
+                    if (data.finalResult !== undefined) {
+                        try {
+                            const formatted = JSON.stringify(data.finalResult, null, 2);
+                            resultEditor.setValue(formatted);
+                        } catch {
+                            resultEditor.setValue(String(data.finalResult));
+                        }
+                    }
+                    
+                    setStatus('success', 'Visualization complete');
+                    setTimeout(() => setStatus('ready', 'Ready'), 3000);
+                }
+
+            } catch (err) {
+                setStatus('error', 'Connection failed');
+                document.getElementById('tokenStream').innerHTML = `<div class="error-msg">❌ Connection error</div>`;
+                document.getElementById('parseSteps').innerHTML = `<div class="error-msg">❌ ${escapeHtml(err.message)}</div>`;
+                document.getElementById('executionTrace').innerHTML = `<div class="error-msg">❌ Server unreachable</div>`;
+            } finally {
+                hideLoading();
             }
         });
 
